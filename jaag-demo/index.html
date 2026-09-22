@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en" data-mode="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jaag — Rider Safety Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#15171A; --panel:#1E2124; --panel-2:#262A2E; --hairline:#33383D;
+  --text:#F2F1EC; --text-dim:#9A9EA3; --text-mute:#787D82;
+  --safe:#4FAE8A; --safe-dim:#1E3A31;
+  --warn:#F2A93B; --warn-dim:#3D3016;
+  --danger:#E4483B; --danger-dim:#3E1D19;
+  --accent:#F2A93B;
+  --radius:14px;
+  --font: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', var(--font);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--font);
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  min-height:100%;
+}
+.frame{max-width:420px;margin:0 auto;padding:0 16px 100px;}
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:20px 0 12px; position:sticky; top:env(safe-area-inset-top,0px); background:var(--bg); z-index:5;
+}
+.wordmark{font-family:var(--font-display); font-size:22px; font-weight:600; letter-spacing:-0.01em;}
+.wordmark span{color:var(--warn);}
+.view-toggle{display:flex; background:var(--panel); border-radius:999px; padding:3px; gap:2px;}
+.view-toggle button{
+  border:none; background:transparent; color:var(--text-mute); font-family:var(--font);
+  font-size:12px; padding:7px 12px; border-radius:999px; cursor:pointer; transition:background .15s, color .15s;
+}
+.view-toggle button.active{background:var(--panel-2); color:var(--text);}
+
+.card{background:var(--panel); border:1px solid var(--hairline); border-radius:var(--radius); padding:18px; margin-bottom:14px;}
+.card h3{font-size:13px; font-weight:500; color:var(--text-dim); margin-bottom:10px;}
+
+.risk-badge{
+  display:inline-flex; align-items:center; gap:8px; padding:6px 14px; border-radius:999px;
+  font-size:14px; font-weight:500;
+}
+.risk-dot{width:8px; height:8px; border-radius:50%;}
+.risk-low{background:var(--safe-dim); color:var(--safe);}
+.risk-low .risk-dot{background:var(--safe);}
+.risk-moderate{background:var(--warn-dim); color:var(--warn);}
+.risk-moderate .risk-dot{background:var(--warn);}
+.risk-high{background:var(--danger-dim); color:var(--danger);}
+.risk-high .risk-dot{background:var(--danger); box-shadow:0 0 0 0 rgba(228,72,59,.5); animation:pulse 1.4s infinite;}
+@media (prefers-reduced-motion: no-preference){
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(228,72,59,.45)}70%{box-shadow:0 0 0 10px rgba(228,72,59,0)}100%{box-shadow:0 0 0 0 rgba(228,72,59,0)}}
+}
+
+.cam-wrap{position:relative; border-radius:var(--radius); overflow:hidden; background:#000; aspect-ratio:4/3;}
+.cam-wrap video{width:100%; height:100%; object-fit:cover; transform:scaleX(-1);}
+.cam-off-overlay{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; background:rgba(21,23,26,.92); text-align:center; padding:20px;
+}
+.cam-off-overlay .icon{font-size:26px;}
+.cam-off-overlay p{font-size:13px; color:var(--text-dim); max-width:220px;}
+.cam-tag{
+  position:absolute; top:10px; left:10px; background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  padding:4px 10px; border-radius:999px; font-size:11px; color:var(--text-dim);
+}
+
+.signal-row{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--hairline);}
+.signal-row:last-child{border-bottom:none;}
+.signal-label{font-size:14px;}
+.signal-value{font-size:14px; color:var(--text-dim); font-variant-numeric:tabular-nums;}
+
+.btn{
+  border:none; border-radius:10px; padding:12px 16px; font-family:var(--font); font-size:14px; font-weight:500;
+  cursor:pointer; width:100%; transition:filter .15s, transform .05s;
+}
+.btn:active{transform:scale(.98);}
+.btn-secondary{background:var(--panel-2); color:var(--text); border:1px solid var(--hairline);}
+.btn-secondary:hover{filter:brightness(1.15);}
+.btn-row{display:flex; gap:10px;}
+.btn-row .btn{flex:1;}
+
+.sos-dock{
+  position:fixed; left:0; right:0; bottom:0; padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(to top, var(--bg) 60%, transparent); z-index:10;
+}
+.sos-dock-inner{max-width:420px; margin:0 auto;}
+.sos-btn{
+  background:var(--danger); color:#2A0B08; font-weight:600; font-size:15px; border:none; border-radius:12px;
+  padding:15px; width:100%; cursor:pointer; letter-spacing:0.01em;
+}
+.sos-hint{text-align:center; font-size:11px; color:var(--text-mute); margin-top:6px;}
+
+.overlay{
+  position:fixed; inset:0; background:rgba(10,11,13,.88); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:50; padding:24px;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.overlay.show{opacity:1; pointer-events:auto;}
+.overlay-card{
+  background:var(--panel); border:1px solid var(--hairline); border-radius:18px; padding:28px 24px;
+  max-width:360px; width:100%; text-align:center;
+}
+.overlay-card h2{font-family:var(--font-display); font-size:20px; font-weight:600; margin-bottom:8px;}
+.overlay-card p{font-size:14px; color:var(--text-dim); margin-bottom:20px; line-height:1.5;}
+.ring-wrap{position:relative; width:96px; height:96px; margin:0 auto 20px;}
+.ring-wrap svg{transform:rotate(-90deg);}
+.ring-bg{fill:none; stroke:var(--panel-2); stroke-width:6;}
+.ring-fg{fill:none; stroke:var(--danger); stroke-width:6; stroke-linecap:round; transition:stroke-dashoffset 1s linear;}
+.ring-num{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:600; font-variant-numeric:tabular-nums;}
+
+.call-pulse{width:64px; height:64px; border-radius:50%; background:var(--danger-dim); color:var(--danger); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:26px;}
+
+.toast{
+  position:fixed; left:50%; bottom:110px; transform:translateX(-50%) translateY(10px); z-index:60;
+  background:var(--panel-2); border:1px solid var(--hairline); color:var(--text); font-size:13px;
+  padding:10px 16px; border-radius:10px; opacity:0; transition:opacity .2s, transform .2s; max-width:88%; text-align:center;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+.dash-row{display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid var(--hairline);}
+.dash-row:last-child{border-bottom:none;}
+.dash-name{font-size:14px; font-weight:500;}
+.dash-sub{font-size:12px; color:var(--text-mute); margin-top:2px;}
+.pill{font-size:11px; padding:4px 9px; border-radius:999px; font-weight:500;}
+.pill-hold{background:var(--danger-dim); color:var(--danger);}
+.pill-active{background:var(--safe-dim); color:var(--safe);}
+
+.section-hidden{display:none;}
+.field-caption{font-size:11px; color:var(--text-mute); margin-top:8px; line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="topbar">
+    <div class="wordmark">Jaag<span>.</span></div>
+    <div class="view-toggle">
+      <button id="tabRiderBtn" class="active" onclick="switchTab('rider')">Rider</button>
+      <button id="tabDashBtn" onclick="switchTab('dash')">Platform</button>
+    </div>
+  </div>
+
+  <!-- RIDER VIEW -->
+  <div id="riderView">
+
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between;">
+      <div>
+        <div style="font-size:12px; color:var(--text-mute); margin-bottom:6px;">Current risk</div>
+        <div id="riskBadge" class="risk-badge risk-low"><span class="risk-dot"></span><span id="riskText">Low</span></div>
+      </div>
+      <div style="text-align:right; font-size:11px; color:var(--text-mute);">
+        <div id="modeLabel">Vision + motion</div>
+        <div id="clockLabel" style="margin-top:2px;">Ride: 00:00</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Camera</h3>
+      <div class="cam-wrap">
+        <video id="camVideo" autoplay muted playsinline></video>
+        <div class="cam-tag" id="camTag">requesting camera…</div>
+        <div class="cam-off-overlay" id="camOffOverlay" style="display:none;">
+          <div class="icon">⛑</div>
+          <p>Face not visible — helmet, mask or low light. Switched to motion-only fallback.</p>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-secondary" onclick="simulateDrowsy()">Simulate drowsy eyes</button>
+        <button class="btn btn-secondary" onclick="toggleFaceVisible()">Toggle face visible</button>
+      </div>
+      <p class="field-caption">Camera feed is live. Eye-closure scoring is simulated for this browser demo — the Android build uses on-device ML Kit face landmarks running on the Snapdragon NPU.</p>
+    </div>
+
+    <div class="card">
+      <h3>Motion signals</h3>
+      <div class="signal-row"><span class="signal-label">Accelerometer variance</span><span class="signal-value" id="accelVal">reading…</span></div>
+      <div class="signal-row"><span class="signal-label">Gyroscope variance</span><span class="signal-value" id="gyroVal">reading…</span></div>
+      <div class="signal-row"><span class="signal-label">Motion permission</span><span class="signal-value" id="motionPerm">—</span></div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-secondary" onclick="requestMotion()">Enable sensors</button>
+        <button class="btn btn-secondary" onclick="simulateErratic()">Simulate erratic riding</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Emergency contact</h3>
+      <div class="signal-row"><span class="signal-label">Saved contact</span><span class="signal-value">Amma — Mobile</span></div>
+      <div class="signal-row"><span class="signal-label">Auto-call trigger</span><span class="signal-value">No response in 15s</span></div>
+    </div>
+
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashView" class="section-hidden">
+    <div class="card">
+      <h3>Active riders — screen mirrored via Office Kit</h3>
+      <div class="dash-row">
+        <div>
+          <div class="dash-name">Rider — this device</div>
+          <div class="dash-sub" id="dashStatusSub">Monitoring · low risk</div>
+        </div>
+        <div class="pill pill-active" id="dashPill">Active</div>
+      </div>
+      <div class="dash-row">
+        <div>
+          <div class="dash-name">Rider — Zone 4, HITEC City</div>
+          <div class="dash-sub">Monitoring · low risk</div>
+        </div>
+        <div class="pill pill-active">Active</div>
+      </div>
+      <div class="dash-row">
+        <div>
+          <div class="dash-name">Rider — Zone 2, Madhapur</div>
+          <div class="dash-sub">On safety hold · 18 min left</div>
+        </div>
+        <div class="pill pill-hold">Hold</div>
+      </div>
+    </div>
+    <div class="card" id="resumeCard" style="display:none;">
+      <h3>Safety hold — this rider</h3>
+      <p style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">New orders paused for 30 minutes. Rider can request early resume with a live camera check.</p>
+      <button class="btn btn-secondary" onclick="resumeEarly()">Approve early resume</button>
+    </div>
+  </div>
+</div>
+
+<div class="sos-dock">
+  <div class="sos-dock-inner">
+    <button class="sos-btn" onclick="triggerSOS()">SOS — hold to call emergency contact</button>
+    <div class="sos-hint">On device: triple-press volume button triggers this instantly</div>
+  </div>
+</div>
+
+<!-- Are you okay overlay -->
+<div class="overlay" id="okOverlay">
+  <div class="overlay-card">
+    <div class="ring-wrap">
+      <svg width="96" height="96">
+        <circle class="ring-bg" cx="48" cy="48" r="42"></circle>
+        <circle class="ring-fg" id="ringFg" cx="48" cy="48" r="42" stroke-dasharray="264" stroke-dashoffset="0"></circle>
+      </svg>
+      <div class="ring-num" id="ringNum">15</div>
+    </div>
+    <h2>Are you okay?</h2>
+    <p>High fatigue risk detected. Confirm you're safe, or we'll call your emergency contact.</p>
+    <button class="btn" style="background:var(--safe); color:#0B2A21;" onclick="confirmOkay()">I'm okay — I'll take a break</button>
+  </div>
+</div>
+
+<!-- Calling overlay -->
+<div class="overlay" id="callOverlay">
+  <div class="overlay-card">
+    <div class="call-pulse">📞</div>
+    <h2>Calling Amma</h2>
+    <p id="callSub">Sharing last-known location · HITEC City, Hyderabad</p>
+    <button class="btn btn-secondary" onclick="closeCall()">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let riskLevel = 'low';
+let eyeScore = 0;
+let motionScore = 0;
+let faceVisible = true;
+let rideSeconds = 0;
+let okTimer = null, okSecondsLeft = 15;
+const RING_CIRC = 264;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+function switchTab(tab){
+  document.getElementById('riderView').classList.toggle('section-hidden', tab!=='rider');
+  document.getElementById('dashView').classList.toggle('section-hidden', tab!=='dash');
+  document.getElementById('tabRiderBtn').classList.toggle('active', tab==='rider');
+  document.getElementById('tabDashBtn').classList.toggle('active', tab==='dash');
+}
+
+// ride clock
+setInterval(()=>{
+  rideSeconds++;
+  const m = String(Math.floor(rideSeconds/60)).padStart(2,'0');
+  const s = String(rideSeconds%60).padStart(2,'0');
+  document.getElementById('clockLabel').textContent = `Ride: ${m}:${s}`;
+}, 1000);
+
+// camera
+async function initCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
+    document.getElementById('camVideo').srcObject = stream;
+    document.getElementById('camTag').textContent = 'live · front camera';
+  }catch(e){
+    document.getElementById('camTag').textContent = 'camera unavailable';
+    toast('Camera permission denied — using motion-only signals');
+    faceVisible = false;
+    updateFaceUI();
+  }
+}
+initCamera();
+
+function toggleFaceVisible(){
+  faceVisible = !faceVisible;
+  updateFaceUI();
+}
+function updateFaceUI(){
+  document.getElementById('camOffOverlay').style.display = faceVisible ? 'none' : 'flex';
+  document.getElementById('modeLabel').textContent = faceVisible ? 'Vision + motion' : 'Motion-only fallback';
+  if(!faceVisible){ eyeScore = 0; }
+}
+
+function simulateDrowsy(){
+  if(!faceVisible){ toast('No face signal — this only affects vision scoring'); return; }
+  eyeScore = Math.min(100, eyeScore + 40);
+  toast('Simulated: eyes closing for extended period');
+  recompute();
+  setTimeout(()=>{ eyeScore = Math.max(0, eyeScore - 20); recompute(); }, 4000);
+}
+
+// motion sensors
+async function requestMotion(){
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+    try{
+      const res = await DeviceMotionEvent.requestPermission();
+      document.getElementById('motionPerm').textContent = res;
+      if(res === 'granted') bindMotion();
+    }catch(e){ document.getElementById('motionPerm').textContent = 'denied'; }
+  } else {
+    document.getElementById('motionPerm').textContent = 'granted';
+    bindMotion();
+  }
+}
+let accelBuf = [], gyroBuf = [];
+function bindMotion(){
+  window.addEventListener('devicemotion', (e)=>{
+    const a = e.accelerationIncludingGravity || {x:0,y:0,z:0};
+    const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2);
+    accelBuf.push(mag); if(accelBuf.length>20) accelBuf.shift();
+    const variance = accelBuf.length>1 ? Math.max(...accelBuf)-Math.min(...accelBuf) : 0;
+    document.getElementById('accelVal').textContent = variance.toFixed(2);
+    motionScore = Math.min(100, Math.max(motionScore*0.9, variance*8));
+    recompute();
+  });
+  window.addEventListener('deviceorientation', (e)=>{
+    const g = Math.abs(e.beta||0) + Math.abs(e.gamma||0);
+    gyroBuf.push(g); if(gyroBuf.length>20) gyroBuf.shift();
+    const variance = gyroBuf.length>1 ? Math.max(...gyroBuf)-Math.min(...gyroBuf) : 0;
+    document.getElementById('gyroVal').textContent = variance.toFixed(1)+'°';
+  });
+}
+function simulateErratic(){
+  motionScore = Math.min(100, motionScore + 45);
+  toast('Simulated: sudden swerve detected');
+  recompute();
+  setTimeout(()=>{ motionScore = Math.max(0, motionScore - 25); recompute(); }, 4000);
+}
+
+// risk engine
+function recompute(){
+  const combined = faceVisible ? (eyeScore*0.65 + motionScore*0.35) : motionScore;
+  let level = 'low';
+  if(combined >= 65) level = 'high';
+  else if(combined >= 30) level = 'moderate';
+  setRisk(level);
+}
+
+function setRisk(level){
+  if(level === riskLevel) return;
+  riskLevel = level;
+  const badge = document.getElementById('riskBadge');
+  badge.className = 'risk-badge risk-' + level;
+  document.getElementById('riskText').textContent = level.charAt(0).toUpperCase()+level.slice(1);
+  document.getElementById('dashStatusSub').textContent = 'Monitoring · ' + level + ' risk';
+
+  if(level === 'moderate'){
+    speak("You seem tired. Please consider pulling over for a short break.");
+    toast('Moderate risk — voice warning issued');
+  }
+  if(level === 'high'){
+    openOkOverlay();
+  }
+}
+
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.95;
+  window.speechSynthesis.speak(u);
+}
+
+// are-you-okay flow
+function openOkOverlay(){
+  okSecondsLeft = 15;
+  document.getElementById('ringNum').textContent = okSecondsLeft;
+  document.getElementById('ringFg').style.strokeDashoffset = 0;
+  document.getElementById('okOverlay').classList.add('show');
+  speak("High fatigue risk detected. Please confirm you are okay.");
+  clearInterval(okTimer);
+  okTimer = setInterval(()=>{
+    okSecondsLeft--;
+    document.getElementById('ringNum').textContent = okSecondsLeft;
+    document.getElementById('ringFg').style.strokeDashoffset = RING_CIRC * (1 - okSecondsLeft/15);
+    if(okSecondsLeft <= 0){
+      clearInterval(okTimer);
+      document.getElementById('okOverlay').classList.remove('show');
+      startCall('No response within 15 seconds');
+    }
+  }, 1000);
+}
+function confirmOkay(){
+  clearInterval(okTimer);
+  document.getElementById('okOverlay').classList.remove('show');
+  toast('False alert logged — entering enhanced monitoring');
+  eyeScore = 0; motionScore = 0;
+  setRisk('low');
+}
+
+function startCall(reason){
+  document.getElementById('callSub').textContent = reason + ' · sharing last-known location · HITEC City, Hyderabad';
+  document.getElementById('callOverlay').classList.add('show');
+  document.getElementById('dashPill').textContent = 'Hold';
+  document.getElementById('dashPill').className = 'pill pill-hold';
+  document.getElementById('resumeCard').style.display = 'block';
+}
+function closeCall(){
+  document.getElementById('callOverlay').classList.remove('show');
+}
+function triggerSOS(){
+  clearInterval(okTimer);
+  document.getElementById('okOverlay').classList.remove('show');
+  startCall('Manual SOS triggered by rider');
+}
+function resumeEarly(){
+  document.getElementById('resumeCard').style.display = 'none';
+  document.getElementById('dashPill').textContent = 'Active';
+  document.getElementById('dashPill').className = 'pill pill-active';
+  eyeScore = 0; motionScore = 0;
+  setRisk('low');
+  toast('Live camera check passed — rider resumed');
+}
+
+updateFaceUI();
+</script>
+</body>
+</html>
